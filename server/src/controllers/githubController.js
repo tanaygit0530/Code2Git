@@ -1,4 +1,5 @@
 const githubService = require('../services/githubService');
+const githubRepositoryService = require('../services/githubRepositoryService');
 const aiService = require('../services/aiService');
 const config = require('../config');
 
@@ -15,7 +16,8 @@ function handleAuth(req, res) {
 }
 
 /**
- * OAuth callback handler. Exchanges code for token and sends token to frontend window.
+ * OAuth callback handler. Exchanges code for token, ensures DSA-Solutions repository exists,
+ * and sends token + repo metadata to frontend window.
  */
 async function handleCallback(req, res) {
   const { code } = req.query;
@@ -26,9 +28,10 @@ async function handleCallback(req, res) {
 
   try {
     const accessToken = await githubService.exchangeCodeForToken(code);
-    const userInfo = await githubService.getUserInfo(accessToken);
+    
+    // Automatically ensure DSA-Solutions repository exists
+    const repoSetup = await githubRepositoryService.ensureDSARepository(accessToken);
 
-    // Return HTML window that posts message to Chrome Extension window or closes itself
     const htmlResponse = `
       <!DOCTYPE html>
       <html>
@@ -36,18 +39,23 @@ async function handleCallback(req, res) {
           <title>Code2Git AI - GitHub Connected</title>
           <style>
             body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; text-align: center; padding: 40px; background: #0f172a; color: #f8fafc; }
-            .card { background: #1e293b; padding: 30px; border-radius: 12px; max-width: 450px; margin: 0 auto; border: 1px solid #334155; }
-            h2 { color: #38bdf8; }
-            p { color: #94a3b8; font-size: 14px; }
-            .badge { background: #059669; color: white; padding: 6px 12px; border-radius: 20px; font-weight: bold; display: inline-block; margin-top: 10px; }
+            .card { background: #1e293b; padding: 30px; border-radius: 12px; max-width: 480px; margin: 0 auto; border: 1px solid #334155; }
+            h2 { color: #38bdf8; margin-bottom: 8px; }
+            p { color: #94a3b8; font-size: 14px; margin: 6px 0; }
+            .badge { background: #059669; color: white; padding: 6px 14px; border-radius: 20px; font-weight: bold; display: inline-block; margin-top: 10px; font-size: 12px; }
+            .repo-box { background: #0f172a; padding: 12px; border-radius: 8px; border: 1px solid #334155; font-family: monospace; font-size: 13px; color: #38bdf8; margin: 15px 0; text-align: left; }
           </style>
         </head>
         <body>
           <div class="card">
             <h2>GitHub Connected Successfully!</h2>
-            <p>Logged in as <strong>@${userInfo.login}</strong></p>
+            <p>Welcome, <strong>@${repoSetup.username}</strong></p>
+            <div class="repo-box">
+              <div><strong>DSA Repository:</strong> ${repoSetup.repository.fullName}</div>
+              <div style="color: #4ade80; margin-top: 4px; font-size: 11px;">✓ ${repoSetup.created ? 'Repository Created' : 'Repository Ready'}</div>
+            </div>
             <div class="badge">✓ Authorization Granted</div>
-            <p style="margin-top: 20px;">You can now close this tab and return to Chrome Extension.</p>
+            <p style="margin-top: 20px; font-size: 13px;">You can close this tab and start solving LeetCode problems!</p>
           </div>
           <script>
             // Store token in localStorage for popups or post to window opener
@@ -55,7 +63,8 @@ async function handleCallback(req, res) {
               window.opener.postMessage({
                 type: 'CODE2GIT_GITHUB_AUTH_SUCCESS',
                 accessToken: '${accessToken}',
-                user: ${JSON.stringify({ login: userInfo.login, name: userInfo.name, avatar_url: userInfo.avatar_url })}
+                username: '${repoSetup.username}',
+                repository: ${JSON.stringify(repoSetup.repository)}
               }, '*');
             }
           </script>
@@ -65,7 +74,33 @@ async function handleCallback(req, res) {
     return res.send(htmlResponse);
   } catch (error) {
     console.error('[GitHub Callback Error]:', error);
-    return res.status(500).send(`Authentication failed: ${error.message}`);
+    return res.status(500).send(`Authentication or Repository Setup failed: ${error.message}`);
+  }
+}
+
+/**
+ * Checks token validity, gets authenticated user, and ensures DSA-Solutions exists.
+ */
+async function setupRepo(req, res) {
+  const authHeader = req.headers.authorization;
+  const tokenFromHeader = authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+  const token = req.query.token || req.body.token || tokenFromHeader;
+
+  if (!token) {
+    return res.status(401).json({ success: false, error: 'GitHub access token is required.' });
+  }
+
+  try {
+    const isPrivate = req.body?.private || req.query?.private === 'true';
+    const result = await githubRepositoryService.ensureDSARepository(token, isPrivate);
+    return res.json(result);
+  } catch (err) {
+    console.error('[GitHub Setup Repo Error]:', err);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to ensure DSA repository',
+      details: err.message,
+    });
   }
 }
 
@@ -80,7 +115,7 @@ async function getStatus(req, res) {
 
   const token = authHeader.split(' ')[1];
   try {
-    const user = await githubService.getUserInfo(token);
+    const user = await githubRepositoryService.getAuthenticatedUser(token);
     return res.json({
       connected: true,
       user: {
@@ -125,24 +160,23 @@ async function pushSolution(req, res) {
   if (!token) {
     return res.status(401).json({ error: 'GitHub access token is required.' });
   }
-  if (!repository) {
-    return res.status(400).json({ error: 'Target repository (e.g. "username/repo") is required.' });
-  }
-  if (!problem || !submission) {
-    return res.status(400).json({ error: 'Problem metadata and submission details are required.' });
-  }
 
   try {
-    // If README content is not supplied, generate it now
+    // 1. Automatically ensure repository exists for authenticated user
+    const repoSetup = await githubRepositoryService.ensureDSARepository(token);
+    const targetRepo = repository || repoSetup.repository.fullName;
+
+    // 2. If README content is not supplied, generate it
     let finalReadme = readmeContent;
     if (!finalReadme) {
       console.log('[GitHub Controller] Generating README before pushing...');
       finalReadme = await aiService.generateReadme(problem, submission);
     }
 
+    // 3. Push solution & README
     const pushResult = await githubService.pushSolutionToRepo({
       accessToken: token,
-      repoFullName: repository,
+      repoFullName: targetRepo,
       problem,
       submission,
       readmeContent: finalReadme,
@@ -165,6 +199,7 @@ async function pushSolution(req, res) {
 module.exports = {
   handleAuth,
   handleCallback,
+  setupRepo,
   getStatus,
   getRepos,
   pushSolution,

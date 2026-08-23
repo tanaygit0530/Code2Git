@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
 import fs from 'fs';
 
-// Custom plugin to copy manifest and assets to dist after build
+// Custom plugin to copy manifest to dist
 function copyManifestPlugin() {
   return {
     name: 'copy-manifest-plugin',
@@ -20,18 +20,6 @@ function copyManifestPlugin() {
           resolve(publicDir, 'manifest.json'),
           resolve(distDir, 'manifest.json')
         );
-      }
-
-      // Copy icons if present
-      const iconsDir = resolve(publicDir, 'icons');
-      const distIconsDir = resolve(distDir, 'icons');
-      if (fs.existsSync(iconsDir)) {
-        if (!fs.existsSync(distIconsDir)) {
-          fs.mkdirSync(distIconsDir, { recursive: true });
-        }
-        fs.readdirSync(iconsDir).forEach(file => {
-          fs.copyFileSync(resolve(iconsDir, file), resolve(distIconsDir, file));
-        });
       }
     }
   };

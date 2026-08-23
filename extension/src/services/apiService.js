@@ -21,6 +21,26 @@ class ApiService {
   }
 
   /**
+   * Automatically checks/creates the DSA-Solutions GitHub repository
+   */
+  async setupGithubRepo(token) {
+    const baseUrl = await this.getBackendUrl();
+    const res = await fetch(`${baseUrl}/api/github/setup`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || errData.details || `Repository setup failed (${res.status})`);
+    }
+
+    return await res.json();
+  }
+
+  /**
    * Generates README from backend AI service
    */
   async generateReadme(problem, submission) {

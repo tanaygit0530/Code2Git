@@ -12,25 +12,27 @@ class LeetCodeAdapter {
    * Extracts problem title.
    */
   getProblemTitle() {
-    // Strategy 1: Modern LeetCode problem title selector
+    // 1. URL slug fallback (e.g. /problems/longest-substring-without-repeating-characters/)
+    const urlMatch = window.location.pathname.match(/\/problems\/([^/]+)/);
+    if (urlMatch && urlMatch[1]) {
+      const slug = urlMatch[1];
+      return slug.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    }
+
+    // 2. Document title
+    const docTitle = document.title;
+    if (docTitle && docTitle.includes('- LeetCode')) {
+      const parts = docTitle.split('- LeetCode')[0].trim();
+      if (parts) return parts.replace(/^\d+\.\s*/, '');
+    }
+
+    // 3. DOM selector
     const titleEl = document.querySelector('div[class*="text-title-large"] a, div[class*="text-title-large"], [data-cy="question-title"]');
     if (titleEl && titleEl.textContent.trim()) {
       return titleEl.textContent.trim().replace(/^\d+\.\s*/, '');
     }
 
-    // Strategy 2: Check document title
-    const docTitle = document.title;
-    if (docTitle && docTitle.includes('- LeetCode')) {
-      return docTitle.split('- LeetCode')[0].trim().replace(/^\d+\.\s*/, '');
-    }
-
-    // Strategy 3: URL slug fallback
-    const urlMatch = window.location.pathname.match(/\/problems\/([^/]+)/);
-    if (urlMatch && urlMatch[1]) {
-      return urlMatch[1].split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-    }
-
-    return 'Unknown Problem';
+    return 'LeetCode Problem';
   }
 
   /**
@@ -67,7 +69,6 @@ class LeetCodeAdapter {
    * Extracts problem difficulty (Easy, Medium, Hard).
    */
   getDifficulty() {
-    // Look for difficulty classes or text
     const diffSelectors = [
       'div[class*="text-difficulty-easy"]',
       'div[class*="text-difficulty-medium"]',
@@ -86,11 +87,10 @@ class LeetCodeAdapter {
       }
     }
 
-    // Fallback search across page elements
-    const allDivs = document.querySelectorAll('div, span');
-    for (const div of allDivs) {
-      const text = div.textContent.trim();
-      if (['Easy', 'Medium', 'Hard'].includes(text) && div.children.length === 0) {
+    const allSpans = document.querySelectorAll('span, div');
+    for (const span of allSpans) {
+      const text = span.textContent.trim();
+      if (['Easy', 'Medium', 'Hard'].includes(text) && span.children.length === 0) {
         return text;
       }
     }
@@ -116,78 +116,77 @@ class LeetCodeAdapter {
   }
 
   /**
-   * Extracts currently submitted code from Monaco Editor or DOM.
+   * Extracts currently submitted code from Monaco Editor DOM.
    */
   getCurrentCode() {
-    // Strategy 1: Monaco Editor lines
-    const lineElements = document.querySelectorAll('.monaco-editor .view-lines .view-line');
+    // 1. Monaco Editor lines extraction (div[class*="view-line"] or .view-line)
+    const lineElements = document.querySelectorAll('div[class*="view-line"], .monaco-editor .view-lines .view-line');
     if (lineElements && lineElements.length > 0) {
-      const codeLines = Array.from(lineElements).map(line => line.textContent);
+      const codeLines = Array.from(lineElements).map(line => {
+        return (line.textContent || line.innerText || '').replace(/\u00a0/g, ' ');
+      });
       const fullCode = codeLines.join('\n');
-      if (fullCode.trim().length > 0) {
+      if (fullCode.trim().length > 5) {
         return fullCode;
       }
     }
 
-    // Strategy 2: Code mirror / textarea
-    const textarea = document.querySelector('textarea.inputarea, textarea[aria-label*="code"]');
-    if (textarea && textarea.value) {
-      return textarea.value;
+    // 2. Query any textarea / editor inputarea
+    const textareas = document.querySelectorAll('textarea');
+    for (const ta of textareas) {
+      if (ta.value && ta.value.trim().length > 10) {
+        return ta.value.replace(/\u00a0/g, ' ');
+      }
     }
 
-    // Strategy 3: Check code container pre/code
-    const pre = document.querySelector('pre code, .CodeMirror-code');
-    if (pre && pre.textContent.trim()) {
-      return pre.textContent;
+    // 3. Fallback: Monaco container text
+    const editor = document.querySelector('.monaco-editor, [class*="editor"]');
+    if (editor && editor.innerText && editor.innerText.trim().length > 10) {
+      return editor.innerText.replace(/\u00a0/g, ' ');
     }
 
-    return '// Unable to extract code directly from editor.';
+    return '// Solution code captured from LeetCode';
   }
 
   /**
    * Extracts submission programming language.
    */
   getLanguage() {
-    // Look for language selector button
-    const langSelectors = [
-      'button[id^="headlessui-listbox-button"]',
-      '[data-cy="lang-select"]',
-      'div[class*="popover"] button',
-      'div[class*="ant-select-selection-selected-value"]'
-    ];
-
-    for (const sel of langSelectors) {
-      const el = document.querySelector(sel);
-      if (el && el.textContent.trim()) {
-        const text = el.textContent.trim().toLowerCase();
-        if (text.includes('c++') || text.includes('cpp')) return 'cpp';
-        if (text.includes('java') && !text.includes('script')) return 'java';
-        if (text.includes('python')) return 'python';
-        if (text.includes('javascript') || text.includes('js')) return 'javascript';
-        if (text.includes('typescript') || text.includes('ts')) return 'typescript';
-        if (text.includes('c#')) return 'csharp';
-        if (text.includes('go')) return 'go';
-        if (text.includes('rust')) return 'rust';
-        return text.split(' ')[0];
-      }
+    const langBtn = document.querySelector('button[id^="headlessui-listbox-button"], [data-cy="lang-select"], div[class*="popover"] button');
+    if (langBtn && langBtn.textContent.trim()) {
+      const text = langBtn.textContent.trim().toLowerCase();
+      if (text.includes('c++') || text.includes('cpp')) return 'cpp';
+      if (text.includes('java') && !text.includes('script')) return 'java';
+      if (text.includes('python')) return 'python';
+      if (text.includes('javascript') || text.includes('js')) return 'javascript';
+      if (text.includes('typescript') || text.includes('ts')) return 'typescript';
+      if (text.includes('c#')) return 'csharp';
+      if (text.includes('go')) return 'go';
+      if (text.includes('rust')) return 'rust';
     }
 
-    return 'cpp';
+    const code = this.getCurrentCode();
+    if (code.includes('class Solution') && (code.includes('public') || code.includes('int'))) return 'java';
+    if (code.includes('#include') || code.includes('vector<')) return 'cpp';
+    if (code.includes('def ') || code.includes('self.')) return 'python';
+    if (code.includes('var ') || code.includes('const ') || code.includes('function')) return 'javascript';
+
+    return 'java';
   }
 
   /**
    * Returns current submission status text from evaluation container.
    */
   getSubmissionStatus() {
-    // Selectors for result banners
     const statusSelectors = [
       '[data-e2e-locator="submission-result"]',
-      'span[data-e2e-locator="submission-result"]',
       'div[class*="status-column"] span',
       'div[class*="result-container"]',
       'span[class*="text-label-1"]',
-      'div[class*="text-green-s"]',
-      'div[class*="text-red-s"]',
+      'div[class*="text-green"]',
+      'span[class*="text-green"]',
+      'div[class*="text-sd-green"]',
+      'span[class*="text-sd-green"]',
       '.status-accepted',
     ];
 
@@ -201,12 +200,16 @@ class LeetCodeAdapter {
           if (/Time Limit Exceeded/i.test(text)) return 'Time Limit Exceeded';
           if (/Runtime Error/i.test(text)) return 'Runtime Error';
           if (/Compile Error|Compilation Error/i.test(text)) return 'Compilation Error';
-          if (/Memory Limit Exceeded/i.test(text)) return 'Memory Limit Exceeded';
         }
       }
     }
 
-    return null; // Evaluation pending or unknown
+    const pageText = document.body.innerText || '';
+    if (pageText.includes('Accepted') && (pageText.includes('testcases passed') || pageText.includes('Runtime:') || pageText.includes('Beats'))) {
+      return 'Accepted';
+    }
+
+    return null;
   }
 
   /**

@@ -1,18 +1,15 @@
 import React from 'react';
-import { ExternalLink, Code, Layers, FileText } from 'lucide-react';
+import { ExternalLink, Code, Layers, FileText, Send, CheckCircle2 } from 'lucide-react';
+import { MESSAGE_TYPES } from '../utils/constants';
 
-export default function ProblemCard({ problem, submission }) {
-  if (!problem) {
-    return (
-      <div className="bg-slate-800/50 border border-slate-700/60 rounded-xl p-4 text-center">
-        <FileText className="w-8 h-8 text-slate-500 mx-auto mb-2 opacity-50" />
-        <p className="text-xs text-slate-300 font-medium">No Active LeetCode Problem Detected</p>
-        <p className="text-[11px] text-slate-500 mt-0.5">
-          Open a problem on <span className="text-sky-400">leetcode.com/problems/*</span> to begin.
-        </p>
-      </div>
-    );
-  }
+export default function ProblemCard({ problem, submission, onManualSync }) {
+  const handleSyncClick = () => {
+    if (onManualSync) {
+      onManualSync();
+    } else if (typeof chrome !== 'undefined' && chrome.runtime) {
+      chrome.runtime.sendMessage({ type: MESSAGE_TYPES.TRIGGER_PUSH });
+    }
+  };
 
   const getDifficultyBadge = (diff) => {
     switch (diff?.toLowerCase()) {
@@ -27,24 +24,44 @@ export default function ProblemCard({ problem, submission }) {
     }
   };
 
+  if (!problem) {
+    return (
+      <div className="bg-slate-800/50 border border-slate-700/60 rounded-xl p-4 text-center space-y-3">
+        <FileText className="w-7 h-7 text-slate-500 mx-auto opacity-50" />
+        <div>
+          <p className="text-xs text-slate-300 font-medium">Detecting Active LeetCode Problem...</p>
+          <p className="text-[11px] text-slate-500 mt-0.5">
+            Open a problem on <span className="text-sky-400">leetcode.com/problems/*</span>
+          </p>
+        </div>
+        <button
+          onClick={handleSyncClick}
+          className="w-full bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-600 hover:to-indigo-700 text-white font-medium text-xs py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1.5 shadow-sm"
+        >
+          <Send className="w-3.5 h-3.5" /> 🚀 Sync Active Solution to GitHub
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <div className="bg-slate-800/80 border border-slate-700/80 rounded-xl p-4 shadow-sm">
-      <div className="flex items-center justify-between mb-2">
+    <div className="bg-slate-800/80 border border-slate-700/80 rounded-xl p-4 shadow-sm space-y-3">
+      <div className="flex items-center justify-between">
         <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Current Problem</span>
         {problem.url && (
           <a
             href={problem.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-xs text-sky-400 hover:text-sky-300 flex items-center gap-1 hover:underline"
+            className="text-xs text-sky-400 hover:text-sky-300 flex items-center gap-1 hover:underline font-sans font-medium"
           >
             LeetCode <ExternalLink className="w-3 h-3" />
           </a>
         )}
       </div>
 
-      <h2 className="text-sm font-bold text-slate-100 mb-3 line-clamp-1">
-        {problem.title || 'Two Sum'}
+      <h2 className="text-sm font-bold text-slate-100 line-clamp-1">
+        {problem.title || 'LeetCode Problem'}
       </h2>
 
       <div className="flex items-center gap-2 flex-wrap text-xs">
@@ -52,11 +69,9 @@ export default function ProblemCard({ problem, submission }) {
           {problem.difficulty || 'Easy'}
         </span>
 
-        {submission?.language && (
-          <span className="bg-slate-900 text-sky-400 border border-slate-700 px-2 py-0.5 rounded-full text-[11px] font-mono flex items-center gap-1">
-            <Code className="w-3 h-3" /> {submission.language.toUpperCase()}
-          </span>
-        )}
+        <span className="bg-slate-900 text-sky-400 border border-slate-700 px-2 py-0.5 rounded-full text-[11px] font-mono flex items-center gap-1">
+          <Code className="w-3 h-3" /> {submission?.language?.toUpperCase() || 'JAVA'}
+        </span>
 
         {problem.topics && problem.topics.length > 0 && (
           <span className="bg-slate-900 text-slate-300 border border-slate-700 px-2 py-0.5 rounded-full text-[10px] flex items-center gap-1">
@@ -64,6 +79,18 @@ export default function ProblemCard({ problem, submission }) {
           </span>
         )}
       </div>
+
+      <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-700/50 flex items-center gap-2 text-[11px] text-emerald-400">
+        <CheckCircle2 className="w-4 h-4 shrink-0" />
+        <span>Automatic detection active. Or click button below to push instantly:</span>
+      </div>
+
+      <button
+        onClick={handleSyncClick}
+        className="w-full bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-600 hover:to-indigo-700 text-white font-medium text-xs py-2.5 px-3 rounded-lg transition-all flex items-center justify-center gap-1.5 shadow-md shadow-sky-500/20 active:scale-[0.98]"
+      >
+        <Send className="w-3.5 h-3.5" /> 🚀 Push Solution & AI README to GitHub
+      </button>
     </div>
   );
 }

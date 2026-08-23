@@ -1,17 +1,26 @@
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-// Simple valid 1x1 green PNG base64 decoded
-const base64Png = 'iVBORw0KGgoAAAANSU5EUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
-const iconBuffer = Buffer.from(base64Png, 'base64');
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-const iconsDir = path.join(__dirname, '../public/icons');
-if (!fs.existsSync(iconsDir)) {
-  fs.mkdirSync(iconsDir, { recursive: true });
-}
+// Standard valid 1x1 pixel PNG binary buffer
+const pngBase64 = 'iVBORw0KGgoAAAANSU5EUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+const buffer = Buffer.from(pngBase64, 'base64');
 
-['icon16.png', 'icon48.png', 'icon128.png'].forEach(filename => {
-  fs.writeFileSync(path.join(iconsDir, filename), iconBuffer);
+const publicIconsDir = path.join(__dirname, '../public/icons');
+const distIconsDir = path.join(__dirname, '../dist/icons');
+
+[publicIconsDir, distIconsDir].forEach(dir => {
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
 });
 
-console.log('Extension icons created successfully.');
+['icon16.png', 'icon48.png', 'icon128.png'].forEach(file => {
+  fs.writeFileSync(path.join(publicIconsDir, file), buffer);
+  fs.writeFileSync(path.join(distIconsDir, file), buffer);
+});
+
+console.log('✅ Created valid PNG icons successfully.');

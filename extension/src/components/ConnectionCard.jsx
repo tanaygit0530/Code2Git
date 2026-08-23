@@ -1,18 +1,39 @@
 import React, { useState, useEffect } from 'react';
-import { Github, CheckCircle2, AlertCircle, RefreshCw, FolderGit2, Key } from 'lucide-react';
+import { Github, CheckCircle2, AlertCircle, RefreshCw, ExternalLink, Key, FolderCheck } from 'lucide-react';
 import storageService from '../services/storageService';
 import apiService from '../services/apiService';
 
 export default function ConnectionCard({ isConnected, setIsConnected, selectedRepo, setSelectedRepo }) {
   const [user, setUser] = useState(null);
+  const [repoInfo, setRepoInfo] = useState(null);
   const [tokenInput, setTokenInput] = useState('');
   const [showTokenField, setShowTokenField] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [repoInput, setRepoInput] = useState(selectedRepo || 'DSA-Solutions');
-  const [userRepos, setUserRepos] = useState([]);
+  const [statusMsg, setStatusMsg] = useState('');
 
   useEffect(() => {
     loadAuthStatus();
+
+    // Listener for postMessage from OAuth callback window
+    const handleAuthMessage = async (event) => {
+      if (event.data && event.data.type === 'CODE2GIT_GITHUB_AUTH_SUCCESS') {
+        const { accessToken, username, repository } = event.data;
+        if (accessToken) {
+          await storageService.set('github_token', accessToken);
+          await storageService.set('github_user', { login: username });
+          if (repository) {
+            await storageService.set('selected_repo', repository.fullName);
+            setSelectedRepo(repository.fullName);
+            setRepoInfo(repository);
+          }
+          setIsConnected(true);
+          setUser({ login: username });
+        }
+      }
+    };
+
+    window.addEventListener('message', handleAuthMessage);
+    return () => window.removeEventListener('message', handleAuthMessage);
   }, []);
 
   const loadAuthStatus = async () => {
@@ -20,22 +41,30 @@ export default function ConnectionCard({ isConnected, setIsConnected, selectedRe
     try {
       const token = await storageService.getGithubToken();
       const savedUser = await storageService.getGithubUser();
-      const repo = await storageService.getSelectedRepo();
-      setRepoInput(repo);
+      const savedRepo = await storageService.getSelectedRepo();
 
       if (token) {
         setIsConnected(true);
         setUser(savedUser || { login: 'Connected User' });
-        // Fetch user repos list
+
+        // Ensure DSA-Solutions repository exists & get exact metadata
         try {
-          const repos = await apiService.getGithubRepos(token);
-          setUserRepos(repos);
+          const repoSetup = await apiService.setupGithubRepo(token);
+          if (repoSetup && repoSetup.repository) {
+            setUser({ login: repoSetup.username });
+            setRepoInfo(repoSetup.repository);
+            setSelectedRepo(repoSetup.repository.fullName);
+            await storageService.set('selected_repo', repoSetup.repository.fullName);
+            await storageService.set('github_user', { login: repoSetup.username });
+          }
         } catch (e) {
-          console.warn('Could not fetch repos list automatically.');
+          console.warn('Repository auto-setup check note:', e.message);
+          setRepoInfo({ fullName: savedRepo || 'DSA-Solutions', url: '#' });
         }
       } else {
         setIsConnected(false);
         setUser(null);
+        setRepoInfo(null);
       }
     } catch (err) {
       console.error('Failed loading auth status:', err);
@@ -45,6 +74,7 @@ export default function ConnectionCard({ isConnected, setIsConnected, selectedRe
   };
 
   const handleConnectOAuth = async () => {
+    setStatusMsg('Connecting GitHub...');
     const backendUrl = await storageService.getBackendUrl();
     window.open(`${backendUrl}/api/github/auth`, '_blank', 'width=600,height=700');
   };
@@ -54,25 +84,28 @@ export default function ConnectionCard({ isConnected, setIsConnected, selectedRe
     if (!tokenInput.trim()) return;
 
     setLoading(true);
+    setStatusMsg('Checking & creating DSA-Solutions repository...');
     try {
-      // Save token directly
-      await storageService.set('github_token', tokenInput.trim());
-      const mockUser = { login: 'GitHub User' };
-      await storageService.set('github_user', mockUser);
+      const token = tokenInput.trim();
+      await storageService.set('github_token', token);
+
+      // Trigger automatic repository creation / check
+      const repoSetup = await apiService.setupGithubRepo(token);
+      
+      setUser({ login: repoSetup.username });
+      setRepoInfo(repoSetup.repository);
+      setSelectedRepo(repoSetup.repository.fullName);
+      await storageService.set('selected_repo', repoSetup.repository.fullName);
+      await storageService.set('github_user', { login: repoSetup.username });
+
       setIsConnected(true);
-      setUser(mockUser);
       setShowTokenField(false);
+      setStatusMsg('');
     } catch (err) {
-      alert('Failed saving token: ' + err.message);
+      alert('Failed setting up repository: ' + err.message);
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleRepoChange = async (newRepo) => {
-    setRepoInput(newRepo);
-    setSelectedRepo(newRepo);
-    await storageService.set('selected_repo', newRepo);
   };
 
   const handleDisconnect = async () => {
@@ -80,6 +113,7 @@ export default function ConnectionCard({ isConnected, setIsConnected, selectedRe
     await storageService.set('github_user', null);
     setIsConnected(false);
     setUser(null);
+    setRepoInfo(null);
   };
 
   return (
@@ -91,7 +125,7 @@ export default function ConnectionCard({ isConnected, setIsConnected, selectedRe
         </div>
         {isConnected ? (
           <span className="flex items-center gap-1 text-xs font-medium text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-            <CheckCircle2 className="w-3.5 h-3.5" /> Connected
+            <CheckCircle2 className="w-3.5 h-3.5" /> Connected ✓
           </span>
         ) : (
           <span className="flex items-center gap-1 text-xs font-medium text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
@@ -104,12 +138,12 @@ export default function ConnectionCard({ isConnected, setIsConnected, selectedRe
         <div className="space-y-3">
           <div className="flex items-center justify-between text-xs bg-slate-900/60 p-2.5 rounded-lg border border-slate-700/50">
             <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded-full bg-sky-500/20 text-sky-400 flex items-center justify-center font-bold uppercase text-[10px]">
+              <div className="w-7 h-7 rounded-full bg-sky-500/20 text-sky-400 flex items-center justify-center font-bold uppercase text-xs">
                 {user?.login?.charAt(0) || 'U'}
               </div>
               <div>
-                <p className="font-medium text-slate-200">@{user?.login}</p>
-                <p className="text-slate-400 text-[10px]">Ready to sync solutions</p>
+                <p className="font-semibold text-slate-100">Welcome, {user?.login}</p>
+                <p className="text-slate-400 text-[10px]">GitHub account linked</p>
               </div>
             </div>
             <button
@@ -120,40 +154,38 @@ export default function ConnectionCard({ isConnected, setIsConnected, selectedRe
             </button>
           </div>
 
-          <div>
-            <label className="text-xs font-medium text-slate-300 block mb-1 flex items-center gap-1">
-              <FolderGit2 className="w-3.5 h-3.5 text-sky-400" /> Target Repository
-            </label>
-            {userRepos.length > 0 ? (
-              <select
-                value={repoInput}
-                onChange={(e) => handleRepoChange(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-lg p-2 focus:ring-1 focus:ring-sky-500 outline-none"
-              >
-                {userRepos.map((r) => (
-                  <option key={r.id} value={r.full_name}>
-                    {r.full_name}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <input
-                type="text"
-                value={repoInput}
-                onChange={(e) => handleRepoChange(e.target.value)}
-                placeholder="e.g. username/DSA-Solutions"
-                className="w-full bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-lg p-2 focus:ring-1 focus:ring-sky-500 outline-none font-mono"
-              />
-            )}
-            <p className="text-[10px] text-slate-400 mt-1">
-              Solutions will be pushed inside <span className="text-sky-400 font-mono">{repoInput || 'DSA-Solutions'}/Category/Problem</span>
-            </p>
+          {/* DSA Repository status card */}
+          <div className="bg-slate-900/90 border border-sky-500/30 rounded-lg p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">DSA Repository</span>
+              <span className="text-[11px] text-emerald-400 font-medium flex items-center gap-1">
+                <FolderCheck className="w-3.5 h-3.5" /> Repository Ready ✓
+              </span>
+            </div>
+
+            <div className="text-xs font-mono font-bold text-sky-400">
+              {repoInfo?.fullName || `${user?.login || 'User'}/DSA-Solutions`}
+            </div>
+
+            <div className="pt-1 flex items-center justify-between border-t border-slate-800">
+              <span className="text-[10px] text-slate-400">Public DSA repository</span>
+              {repoInfo?.url && (
+                <a
+                  href={repoInfo.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-sky-400 hover:text-sky-300 flex items-center gap-1 hover:underline font-sans font-medium"
+                >
+                  [Open Repository] <ExternalLink className="w-3 h-3" />
+                </a>
+              )}
+            </div>
           </div>
         </div>
       ) : (
         <div className="space-y-3">
           <p className="text-xs text-slate-400">
-            Connect your GitHub account to automatically save accepted LeetCode solutions.
+            Automatically save your accepted LeetCode solutions to your own GitHub repository.
           </p>
 
           <button
@@ -166,8 +198,12 @@ export default function ConnectionCard({ isConnected, setIsConnected, selectedRe
             ) : (
               <Github className="w-4 h-4" />
             )}
-            Connect GitHub Account
+            Connect GitHub
           </button>
+
+          {statusMsg && (
+            <p className="text-[11px] text-sky-400 text-center animate-pulse">{statusMsg}</p>
+          )}
 
           <div className="text-center">
             <button
@@ -191,7 +227,7 @@ export default function ConnectionCard({ isConnected, setIsConnected, selectedRe
                 type="submit"
                 className="w-full bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs py-1.5 rounded-lg flex items-center justify-center gap-1"
               >
-                <Key className="w-3 h-3" /> Save Token
+                <Key className="w-3 h-3" /> Connect & Create Repository
               </button>
             </form>
           )}

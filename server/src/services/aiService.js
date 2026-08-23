@@ -1,4 +1,4 @@
-const { GoogleGenAI } = require('@google/genai');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 const axios = require('axios');
 const config = require('../config');
 const { buildReadmePrompt } = require('../utils/readmePromptBuilder');
@@ -38,17 +38,30 @@ class AIService {
   }
 
   /**
-   * Gemini API generator using @google/genai SDK
+   * Gemini API generator using @google/generative-ai SDK with model fallback
    */
   async generateGemini(prompt) {
-    const ai = new GoogleGenAI({ apiKey: config.ai.geminiApiKey });
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: prompt,
-    });
+    const genAI = new GoogleGenerativeAI(config.ai.geminiApiKey);
+    
+    // Try gemini-2.5-flash or gemini-pro
+    let modelName = 'gemini-1.5-flash';
+    try {
+      const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      const text = response.text();
+      if (text) return text;
+    } catch (e) {
+      modelName = 'gemini-pro';
+    }
 
-    if (response && response.text) {
-      return response.text;
+    const model = genAI.getGenerativeModel({ model: modelName });
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text();
+
+    if (text) {
+      return text;
     }
     throw new Error('Gemini API returned an empty response.');
   }
@@ -89,7 +102,7 @@ class AIService {
     const difficulty = problem.difficulty || 'Easy';
     const url = problem.url || '#';
     const topics = Array.isArray(problem.topics) ? problem.topics.join(', ') : (problem.topics || 'DSA');
-    const lang = submission.language || 'cpp';
+    const lang = submission.language || 'java';
     const code = submission.code || '// Solution code';
 
     return `# ${title}

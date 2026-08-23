@@ -6,7 +6,9 @@ const githubController = require('../controllers/githubController');
 router.get('/auth', githubController.handleAuth);
 router.get('/callback', githubController.handleCallback);
 
-// GitHub status and repository APIs
+// Automatic Repository Setup & Status APIs
+router.get('/setup', githubController.setupRepo);
+router.post('/setup', githubController.setupRepo);
 router.get('/status', githubController.getStatus);
 router.get('/repos', githubController.getRepos);
 router.post('/push', githubController.pushSolution);

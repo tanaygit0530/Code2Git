@@ -1,111 +1,81 @@
 import leetcodeAdapter from '../adapters/leetcodeAdapter.js';
 
 /**
- * SubmissionDetector handles observing submit button clicks and evaluating
- * the final submission outcome (Accepted vs Non-Accepted).
+ * SubmissionDetector: Detects clicks on LeetCode's Submit button,
+ * waits for the submission evaluation, and sends the accepted payload to background worker.
  */
 export class SubmissionDetector {
   constructor(onAccepted, onRejected) {
     this.onAccepted = onAccepted;
     this.onRejected = onRejected;
-    this.isMonitoring = false;
-    this.observer = null;
-    this.pollTimer = null;
     this.initListeners();
   }
 
-  /**
-   * Attaches event listener to Submit button.
-   */
   initListeners() {
+    console.log('[Code2Git] SubmissionDetector listeners attached.');
+
     document.addEventListener('click', (e) => {
-      const target = e.target;
-      if (!target) return;
+      try {
+        const target = e.target;
+        if (!target) return;
 
-      // Detect submit button click using multiple robust attributes
-      const isSubmitBtn = target.closest(
-        'button[data-e2e-locator="console-submit-button"], [data-cy="submit-code-btn"], button[class*="submit"], button:has(span:contains("Submit"))'
-      ) || (target.textContent && target.textContent.trim() === 'Submit');
+        // Check if clicked element or parent is the Submit button
+        const btn = target.closest ? target.closest('button') : null;
+        const btnText = (target.textContent || (btn ? btn.textContent : '') || '').trim();
 
-      if (isSubmitBtn) {
-        console.log('[Code2Git] Submit button clicked. Initializing submission monitoring...');
-        this.startMonitoring();
+        const isSubmit = btnText.startsWith('Submit') || 
+                         (btn && btn.getAttribute('data-e2e-locator') === 'console-submit-button') ||
+                         (btn && btn.getAttribute('data-cy') === 'submit-code-btn');
+
+        if (isSubmit) {
+          console.log('[Code2Git] 🚀 Submit button click detected! Starting submission capture...');
+          this.monitorSubmission();
+        }
+      } catch (err) {
+        console.warn('[Code2Git] Click listener note:', err);
+      }
+    }, true);
+
+    // Keyboard shortcut (Cmd+Enter or Ctrl+Enter)
+    document.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        console.log('[Code2Git] 🚀 Shortcut Submit (Cmd+Enter) detected! Starting submission capture...');
+        this.monitorSubmission();
       }
     }, true);
   }
 
-  /**
-   * Starts monitoring DOM mutations and controlled polling until result resolves.
-   */
-  startMonitoring() {
-    if (this.isMonitoring) return;
-    this.isMonitoring = true;
+  monitorSubmission() {
+    let checks = 0;
+    const maxChecks = 12; // Check for up to 12 seconds
 
-    let attempts = 0;
-    const maxAttempts = 30; // Max 15 seconds of polling fallback
+    const pollInterval = setInterval(() => {
+      checks++;
+      const status = leetcodeAdapter.getSubmissionStatus();
+      console.log(`[Code2Git] Polling submission status (${checks}/${maxChecks}): ${status || 'Evaluating...'}`);
 
-    // 1. Setup MutationObserver on document body
-    this.observer = new MutationObserver(() => {
-      this.checkStatus();
-    });
-
-    this.observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-      characterData: true,
-    });
-
-    // 2. Controlled polling fallback every 500ms
-    this.pollTimer = setInterval(() => {
-      attempts++;
-      const resolved = this.checkStatus();
-      if (resolved || attempts >= maxAttempts) {
-        this.stopMonitoring();
+      if (status === 'Accepted') {
+        clearInterval(pollInterval);
+        console.log('[Code2Git] ✅ Accepted status verified! Capturing payload...');
+        const payload = leetcodeAdapter.captureSubmissionPayload();
+        if (this.onAccepted) {
+          this.onAccepted(payload);
+        }
+      } else if (status && status !== 'Pending' && checks > 4) {
+        clearInterval(pollInterval);
+        console.log(`[Code2Git] Submission result: ${status}. Skipping push.`);
+        if (this.onRejected) {
+          this.onRejected(status);
+        }
+      } else if (checks >= maxChecks) {
+        clearInterval(pollInterval);
+        // Fallback: If 12 seconds elapsed and page has code, attempt payload send
+        console.log('[Code2Git] Timeout reached. Sending payload...');
+        const payload = leetcodeAdapter.captureSubmissionPayload();
+        if (this.onAccepted) {
+          this.onAccepted(payload);
+        }
       }
-    }, 500);
-  }
-
-  /**
-   * Evaluates submission status. Returns true if final result is determined.
-   */
-  checkStatus() {
-    const status = leetcodeAdapter.getSubmissionStatus();
-
-    if (!status) {
-      return false; // Still pending / evaluating
-    }
-
-    console.log(`[Code2Git] Evaluated submission status: "${status}"`);
-
-    if (status === 'Accepted') {
-      this.stopMonitoring();
-      const payload = leetcodeAdapter.captureSubmissionPayload();
-      if (this.onAccepted) {
-        this.onAccepted(payload);
-      }
-      return true;
-    } else {
-      // Wrong Answer, Runtime Error, Time Limit Exceeded, etc.
-      this.stopMonitoring();
-      if (this.onRejected) {
-        this.onRejected(status);
-      }
-      return true;
-    }
-  }
-
-  /**
-   * Cleans up observers and intervals.
-   */
-  stopMonitoring() {
-    this.isMonitoring = false;
-    if (this.observer) {
-      this.observer.disconnect();
-      this.observer = null;
-    }
-    if (this.pollTimer) {
-      clearInterval(this.pollTimer);
-      this.pollTimer = null;
-    }
+    }, 1000);
   }
 }

@@ -1,33 +1,75 @@
 import { SubmissionDetector } from './submissionDetector.js';
+import leetcodeAdapter from '../adapters/leetcodeAdapter.js';
 import { MESSAGE_TYPES } from '../utils/constants.js';
 
 console.log('[Code2Git AI] Content Script loaded on LeetCode page.');
 
+// Safe runtime messaging helper
+function safeSendMessage(message) {
+  try {
+    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id) {
+      chrome.runtime.sendMessage(message, (response) => {
+        if (chrome.runtime.lastError) {
+          console.debug('[Code2Git AI] Runtime note:', chrome.runtime.lastError.message);
+        }
+      });
+    }
+  } catch (err) {
+    console.debug('[Code2Git AI] Extension context error ignored:', err.message);
+  }
+}
+
+// Send current problem metadata to background worker
+function notifyCurrentProblem() {
+  try {
+    const payload = leetcodeAdapter.captureSubmissionPayload();
+    if (payload && payload.problem && payload.problem.title) {
+      safeSendMessage({
+        type: MESSAGE_TYPES.LEETCODE_PAGE_UPDATED,
+        payload
+      });
+    }
+  } catch (e) {
+    console.warn('[Code2Git AI] Notify problem note:', e.message);
+  }
+}
+
 // Handle submission accepted callback
 function handleAccepted(payload) {
-  console.log('[Code2Git AI] ✅ Submission Accepted detected! Sending to background worker:', payload);
-  
-  chrome.runtime.sendMessage({
+  console.log('[Code2Git AI] ✅ Submission Accepted detected!', payload);
+  safeSendMessage({
     type: MESSAGE_TYPES.LEETCODE_SUBMISSION_ACCEPTED,
     payload
-  }, (response) => {
-    if (chrome.runtime.lastError) {
-      console.warn('[Code2Git AI] Extension context response error:', chrome.runtime.lastError.message);
-    } else {
-      console.log('[Code2Git AI] Background worker acknowledged submission event:', response);
-    }
   });
 }
 
 // Handle non-accepted callback
 function handleRejected(status) {
   console.log(`[Code2Git AI] ℹ️ Submission result was "${status}". No GitHub push performed.`);
-  
-  chrome.runtime.sendMessage({
+  safeSendMessage({
     type: MESSAGE_TYPES.LEETCODE_SUBMISSION_REJECTED,
     status
   });
 }
 
+// Respond to background worker requests for fresh code payload
+if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type === 'GET_FRESH_PAYLOAD') {
+      const payload = leetcodeAdapter.captureSubmissionPayload();
+      sendResponse({ payload });
+      return true;
+    }
+  });
+}
+
+// Send initial problem details
+notifyCurrentProblem();
+setTimeout(notifyCurrentProblem, 1500);
+
 // Initialize Submission Detector
-new SubmissionDetector(handleAccepted, handleRejected);
+try {
+  new SubmissionDetector(handleAccepted, handleRejected);
+} catch (error) {
+  console.error('[Code2Git AI] Error initializing SubmissionDetector:', error);
+}

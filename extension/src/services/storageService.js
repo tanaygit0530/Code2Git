@@ -29,7 +29,12 @@ class StorageService {
   }
 
   async getBackendUrl() {
-    return (await this.get(STORAGE_KEYS.BACKEND_URL)) || DEFAULT_BACKEND_URL;
+    const url = await this.get(STORAGE_KEYS.BACKEND_URL);
+    if (!url || url === 'http://localhost:5000' || url === 'http://localhost:5000/') {
+      await this.set(STORAGE_KEYS.BACKEND_URL, DEFAULT_BACKEND_URL);
+      return DEFAULT_BACKEND_URL;
+    }
+    return url;
   }
 
   async getGithubToken() {

@@ -4,10 +4,10 @@
   "description": "Chrome extension and backend to automatically capture accepted LeetCode solutions, generate AI READMEs, and push to GitHub.",
   "private": true,
   "scripts": {
-    "install:all": "npm install && npm --prefix server install && npm --prefix extension install",
-    "build:extension": "npm --prefix extension run build",
-    "start:server": "npm --prefix server start",
-    "dev:server": "npm --prefix server run dev"
+    "install:all": "npm install && cd server && npm install && cd ../extension && npm install",
+    "build:extension": "cd extension && npm run build",
+    "start:server": "cd server && npm start",
+    "dev:server": "cd server && npm run dev"
   },
   "keywords": [
     "leetcode",
