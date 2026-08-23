@@ -1,0 +1,19 @@
+{
+  "name": "code2git-ai-server",
+  "version": "1.0.0",
+  "description": "Backend API for Code2Git AI Chrome Extension - AI README Generation & GitHub REST API Integration",
+  "main": "src/server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "dependencies": {
+    "@google/genai": "^0.1.1",
+    "axios": "^1.7.9",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0"
+  }
+}

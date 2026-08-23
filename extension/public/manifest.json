@@ -1,0 +1,41 @@
+{
+  "manifest_version": 3,
+  "name": "Code2Git AI",
+  "version": "1.0.0",
+  "description": "Automated AI-powered LeetCode solution capture, README generation, and GitHub DSA repository sync.",
+  "permissions": [
+    "storage",
+    "sidePanel",
+    "notifications",
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://leetcode.com/*",
+    "http://localhost:5000/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "src/background/backgroundWorker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://leetcode.com/problems/*"],
+      "js": ["src/content/contentScript.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "side_panel": {
+    "default_path": "index.html"
+  },
+  "action": {
+    "default_popup": "index.html",
+    "default_title": "Code2Git AI"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
