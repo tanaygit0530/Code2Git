@@ -1,6 +1,14 @@
 import { SubmissionDetector } from './submissionDetector.js';
 import leetcodeAdapter from '../adapters/leetcodeAdapter.js';
-import { MESSAGE_TYPES } from '../utils/constants.js';
+
+const MESSAGE_TYPES = {
+  LEETCODE_SUBMISSION_ACCEPTED: 'LEETCODE_SUBMISSION_ACCEPTED',
+  LEETCODE_SUBMISSION_REJECTED: 'LEETCODE_SUBMISSION_REJECTED',
+  LEETCODE_PAGE_UPDATED: 'LEETCODE_PAGE_UPDATED',
+  STATUS_UPDATE: 'STATUS_UPDATE',
+  TRIGGER_PUSH: 'TRIGGER_PUSH',
+  GET_STATUS: 'GET_STATUS',
+};
 
 console.log('[Code2Git AI] Content Script loaded on LeetCode page.');
 

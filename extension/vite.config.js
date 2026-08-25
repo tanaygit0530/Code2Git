@@ -3,7 +3,6 @@ import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
 import fs from 'fs';
 
-// Custom plugin to copy manifest to dist
 function copyManifestPlugin() {
   return {
     name: 'copy-manifest-plugin',
@@ -14,7 +13,6 @@ function copyManifestPlugin() {
         fs.mkdirSync(distDir, { recursive: true });
       }
 
-      // Copy manifest.json
       if (fs.existsSync(resolve(publicDir, 'manifest.json'))) {
         fs.copyFileSync(
           resolve(publicDir, 'manifest.json'),
@@ -41,6 +39,12 @@ export default defineConfig({
           if (chunkInfo.name === 'backgroundWorker') return 'src/background/backgroundWorker.js';
           if (chunkInfo.name === 'contentScript') return 'src/content/contentScript.js';
           return 'assets/[name]-[hash].js';
+        },
+        // Prevent code splitting for content scripts
+        manualChunks(id) {
+          if (id.includes('contentScript') || id.includes('submissionDetector') || id.includes('leetcodeAdapter')) {
+            return 'contentScriptBundle';
+          }
         },
         chunkFileNames: 'assets/[name]-[hash].js',
         assetFileNames: 'assets/[name]-[hash].[ext]',
